@@ -26,7 +26,6 @@ snapper_devices=($(
 ))
 
 get_latest() {
-    set -x
     local config="$1"
     for i in "${!snapper_configs[@]}"; do
         if [[ "${snapper_configs[i]}" == "$config" ]]; then
