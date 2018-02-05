@@ -1,0 +1,10 @@
+[Unit]
+Description=Borg backup post snapper snapshots
+After=snapper-timeline.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/snapper2borg.sh
+
+[Install]
+WantedBy=snapper-timeline.service
