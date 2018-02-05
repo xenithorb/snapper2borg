@@ -12,7 +12,7 @@ declare -A snapper_lv_snapshots snapper_mounted
 
 # MUTEX Do not remove
 lockdir="${BORG_BACKUP_PATH}/.snapper2borg.lock"
-if ! mkdir "$lockdir"; then
+if ! mkdir "$lockdir" >/dev/null 2>&1; then
     echo "${0##*/} cannot run more than once, or remove the lockdir at: $lockdir"
     exit 1
 fi
