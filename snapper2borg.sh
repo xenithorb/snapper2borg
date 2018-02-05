@@ -10,10 +10,15 @@ BORG_ENCRYPTION="repokey-blake2"
 export BORG_PASSPHRASE
 declare -A snapper_lv_snapshots snapper_mounted
 
-(( EUID == 0 )) || { echo "This script must be run as root"; exit 1; }
+# MUTEX Do not remove
+lockdir="${BORG_BACKUP_PATH}/.snapper2borg.lock"
+if ! mkdir "$lockdir"; then
+    echo "${0##*/} cannot run more than once, or remove the lockdir at: $lockdir"
+    exit 1
+fi
 
-# check sudo
-# sudo -v || { echo "Needs sudo" ; exit 1; }
+# Check for root
+(( EUID == 0 )) || { echo "This script must be run as root"; exit 1; }
 
 # Get configured snapper filesystems
 snapper_filesystems=($( snapper list-configs | awk 'NR > 2 { print $3 }' ))
@@ -69,6 +74,7 @@ wrap_up() {
         local num="${snapper_mounted[$config]}"
         mount_snapshot "$config" umount "$num"
     done
+    rmdir "$lockdir"
 }
 
 # Resolve LVs into a list of descendant snapshots
@@ -88,7 +94,7 @@ for config in "${snapper_configs[@]}"; do
         )
         snapper_mounted[$config]="$snapshot_num"
         if [[ ! -d "${BORG_BACKUP_PATH}/$config" ]]; then
-            borg_create_repo "$config" "$snapshot_num" "$snapshot_mount" || \
+            borg_create_repo "$config" "$snapshot_num" "$snapshot_mount" ||
                 { echo "Creating the repo failed"; exit 1; }
         fi
         borg_create_snap "$config" "$snapshot_num" "$snapshot_mount"
@@ -97,4 +103,4 @@ for config in "${snapper_configs[@]}"; do
     fi
 done
 
-trap wrap_up EXIT TERM
+trap wrap_up INT EXIT TERM
