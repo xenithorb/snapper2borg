@@ -101,6 +101,7 @@ wrap_up() {
 }
 
 trap wrap_up INT EXIT TERM
+error=0
 
 check_root
 mutex
@@ -137,16 +138,18 @@ for i in "${!snapper_configs[@]}"; do
                 '$1 ~ device"--snapshot"num && $3 !~ bind_pre { print $3 }'
         )
         bind_mount_paths+=($( bind_mount_snapshot "${device##*/}" "$snapshot_mount" )) ||
-            { echo "Could not bind mount the snapshot"; exit 1; }
+            { echo "Could not bind mount the snapshot"; error=1; continue; }
         if [[ ! -d "${BORG_BACKUP_PATH}/$config" ]]; then
             borg_create_repo "$config" ||
-                { echo "Borg - Creating the repo failed"; exit 1; }
+                { echo "Borg - Creating the repo failed"; error=1; continue; }
         fi
         borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}" ||
-            { echo "Borg - Archive error, not created properly"; exit 1; }
+            { echo "Borg - Archive error, not created properly"; error=1; continue; }
         borg_prune_repo "$config" ||
-            { echo "Borg - Repository prune error"; exit 1; }
+            { echo "Borg - Repository prune error"; error=1; continue; }
     else
-        echo "Unable to mount snapshot"; exit 1
+        echo "Unable to mount snapshot"; error=1; continue
     fi
 done
+
+exit $error
