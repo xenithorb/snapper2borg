@@ -3,7 +3,7 @@ Description=Borg backup post snapper snapshots
 After=snapper-timeline.service
 
 [Service]
-Type=simple
+Type=oneshot
 ExecStart=/usr/local/bin/snapper2borg.sh
 
 [Install]
