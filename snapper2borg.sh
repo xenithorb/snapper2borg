@@ -4,31 +4,27 @@ BORG_BACKUP_PATH="/mnt/external1/backups"
 BORG_COMPRESSION="auto,zstd"
 BORG_FLAGS="-x -s"
 #BORG_FLAGS="-x -s --progress"
-BORG_PASSPHRASE="${BORG_PASSPHRASE}"
+#BORG_PASSPHRASE="${BORG_PASSPHRASE}"
+BORG_PASSCOMMAND="cat /root/.borg_password"
 BORG_ENCRYPTION="repokey-blake2"
+BIND_MNT_PREFIX="/tmp/borg"
 
-export BORG_PASSPHRASE
+export BORG_PASSPHRASE BORG_PASSCOMMAND
 declare -A snapper_lv_snapshots snapper_mounted
 
-# MUTEX Do not remove
-lockdir="${BORG_BACKUP_PATH}/.snapper2borg.lock"
-if ! mkdir "$lockdir" >/dev/null 2>&1; then
-    echo "${0##*/} cannot run more than once, or remove the lockdir at: $lockdir"
-    exit 1
-fi
+check_root() {
+    # Check for root
+    (( EUID == 0 )) || { echo "This script must be run as root"; exit 1; }
+}
 
-# Check for root
-(( EUID == 0 )) || { echo "This script must be run as root"; exit 1; }
-
-# Get configured snapper filesystems
-snapper_filesystems=($( snapper list-configs | awk 'NR > 2 { print $3 }' ))
-snapper_configs=($( snapper list-configs | awk 'NR>2 { print $1 }' ))
-snapper_devices=($(
-    for mount in "${snapper_filesystems[@]}"; do
-        __df_output=($( df -l --no-sync --output=source "$mount" ))
-        echo "${__df_output[1]}"
-    done
-))
+mutex() {
+    # MUTEX Do not remove
+    lockdir="${BORG_BACKUP_PATH}/.snapper2borg.lock"
+    if ! mkdir "$lockdir" >/dev/null 2>&1; then
+        echo "${0##*/} cannot run more than once, or remove the lockdir at: $lockdir"
+        exit 1
+    fi
+}
 
 get_latest() {
     local config="$1"
@@ -62,11 +58,25 @@ borg_create_snap() {
 
 borg_create_repo() {
     local config="$1"
-    local num="$2"
-    local mount="$3"
     borg init \
         -e "${BORG_ENCRYPTION}" \
         "${BORG_BACKUP_PATH}/${config}" >/dev/null 2>&1
+}
+
+borg_get_names() {
+    local config="$1"
+    borg list -a "*-snapshot*" "${BORG_BACKUP_PATH}/${config}" \
+        --format '{name}{NL}'
+}
+
+bind_mount_snapshot() {
+    # Returns the bind mountpoint of the snapshot
+    local bind_path="${BIND_MNT_PREFIX}/$1"
+    local snapshot="$2"
+    mkdir -p "${BIND_MNT_PREFIX}" &&
+    mount -o bind,x-mount.mkdir=0600 "$snapshot" "$bind_path"
+    return=$?; (( return == 0 )) && echo "$bind_path"
+    return $return
 }
 
 wrap_up() {
@@ -74,8 +84,27 @@ wrap_up() {
         local num="${snapper_mounted[$config]}"
         mount_snapshot "$config" umount "$num"
     done
+    # for mountpoint in "${bind_mount_paths[@]}"; do
+    #     umount -l "$mountpoint"
+    # done
+    umount -l "${bind_mount_paths[@]}"
     rmdir "$lockdir"
 }
+
+trap wrap_up INT EXIT TERM
+
+check_root
+mutex
+
+# Get configured snapper filesystems
+snapper_filesystems=($( snapper list-configs | awk 'NR > 2 { print $3 }' ))
+snapper_configs=($( snapper list-configs | awk 'NR>2 { print $1 }' ))
+snapper_devices=($(
+    for mount in "${snapper_filesystems[@]}"; do
+        __df_output=($( df -l --no-sync --output=source "$mount" ))
+        echo "${__df_output[1]}"
+    done
+))
 
 # Resolve LVs into a list of descendant snapshots
 for device in "${snapper_devices[@]}"; do
@@ -85,22 +114,27 @@ for device in "${snapper_devices[@]}"; do
     eval snapper_lv_snapshots["${device##*/}"]="\$( echo \"${LVM2_LV_DESCENDANTS}\" | tr ',' '\n' )"
 done
 
-for config in "${snapper_configs[@]}"; do
+for i in "${!snapper_configs[@]}"; do
+    config="${snapper_configs[i]}"
+    device="${snapper_devices[i]}"
     snapshot_num=$(get_latest "$config")
     if ( mount_snapshot "$config" mount "$snapshot_num" ); then
-        snapshot_mount=$(
-            mount | awk -v config="$config" -v num="$snapshot_num" \
-                '$1 ~ config".*snapshot"num { print $3 }'
-        )
         snapper_mounted[$config]="$snapshot_num"
+        snapshot_mount=$(
+            mount | awk \
+                -v device="$device" \
+                -v num="$snapshot_num" \
+                -v bind_pre="$BIND_MNT_PREFIX" \
+                '$1 ~ device"--snapshot"num && $3 !~ bind_pre { print $3 }'
+        )
+        bind_mount_paths+=($( bind_mount_snapshot "${device##*/}" "$snapshot_mount" )) ||
+            { echo "Could not bind mount the snapshot"; exit 1; }
         if [[ ! -d "${BORG_BACKUP_PATH}/$config" ]]; then
-            borg_create_repo "$config" "$snapshot_num" "$snapshot_mount" ||
+            borg_create_repo "$config" ||
                 { echo "Creating the repo failed"; exit 1; }
         fi
-        borg_create_snap "$config" "$snapshot_num" "$snapshot_mount"
+        borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}"
     else
         echo "Unable to mount snapshot"; exit 1
     fi
 done
-
-trap wrap_up INT EXIT TERM
