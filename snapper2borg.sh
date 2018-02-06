@@ -3,7 +3,7 @@
 BORG_BACKUP_PATH="/mnt/external1/backups"
 BORG_COMPRESSION="auto,zstd"
 BORG_FLAGS="-x -s"
-#BORG_FLAGS="-x -s --progress"
+#BORG_FLAGS="-x -s -p"
 #BORG_PASSPHRASE="${BORG_PASSPHRASE}"
 BORG_PASSCOMMAND="cat /root/.borg_password"
 BORG_ENCRYPTION="repokey-blake2"
