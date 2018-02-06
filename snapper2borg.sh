@@ -128,7 +128,9 @@ for i in "${!snapper_configs[@]}"; do
     config="${snapper_configs[i]}"
     device="${snapper_devices[i]}"
     snapshot_num=$(get_latest "$config")
-    if ( mount_snapshot "$config" mount "$snapshot_num" ); then
+
+    if [[ "$SYSTEMD_INSTANCE" =~ (snapper-timeline|^$) ]] &&
+        ( mount_snapshot "$config" mount "$snapshot_num" ); then
         snapper_mounted[$config]="$snapshot_num"
         snapshot_mount=$(
             mount | awk \
@@ -145,10 +147,13 @@ for i in "${!snapper_configs[@]}"; do
         fi
         borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}" ||
             { echo "Borg - Archive error, not created properly"; error=1; continue; }
-        borg_prune_repo "$config" ||
-            { echo "Borg - Repository prune error"; error=1; continue; }
     else
         echo "Unable to mount snapshot"; error=1; continue
+    fi
+
+    if [[ "$SYSTEMD_INSTANCE" == "snapper-cleanup" ]]; then
+        borg_prune_repo "$config" ||
+            { echo "Borg - Repository prune error"; error=1; continue; }
     fi
 done
 

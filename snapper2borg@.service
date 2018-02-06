@@ -1,10 +1,13 @@
 [Unit]
 Description=Borg backup post snapper snapshots
 After=snapper-timeline.service
+After=snapper-cleanup.service
 
 [Service]
+Environment=SYSTEMD_INSTANCE=%i
 Type=oneshot
 ExecStart=/usr/local/bin/snapper2borg.sh
 
 [Install]
 WantedBy=snapper-timeline.service
+WantedBy=snapper-cleanup.service

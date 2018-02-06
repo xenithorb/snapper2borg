@@ -3,9 +3,10 @@
 
 set -v
 
+rm -v /etc/systemd/system/snapper2borg*.service
+
 install -m700 "${0%/*}/snapper2borg.sh" /usr/local/bin/
-install -m644 "${0%/*}/snapper2borg.service" /etc/systemd/system/
+install -m644 "${0%/*}/snapper2borg@.service" /etc/systemd/system/
 
 systemctl daemon-reload
-systemctl enable snapper2borg.service
-systemctl --no-pager status snapper2borg.service
+systemctl enable snapper2borg@.service
