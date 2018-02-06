@@ -5,6 +5,7 @@ BORG_COMPRESSION="auto,zstd"
 BORG_FLAGS="-x -s"
 #BORG_FLAGS="-x -s -p"
 #BORG_PASSPHRASE="${BORG_PASSPHRASE}"
+BORG_PRUNE_FLAGS="--keep-witin 1d -d 10 -w 10 -m 6"
 BORG_PASSCOMMAND="cat /root/.borg_password"
 BORG_ENCRYPTION="repokey-blake2"
 BIND_MNT_PREFIX="/tmp/borg"
@@ -61,6 +62,13 @@ borg_create_repo() {
     borg init \
         -e "${BORG_ENCRYPTION}" \
         "${BORG_BACKUP_PATH}/${config}" >/dev/null 2>&1
+}
+
+borg_prune_repo() {
+    local config="$1"
+    # shellcheck disable=2086
+    borg prune ${BORG_FLAGS} -a "*-snapshot*" ${BORG_PRUNE_FLAGS} \
+    "${BORG_BACKUP_PATH}/${config}"
 }
 
 borg_get_names() {
@@ -134,6 +142,8 @@ for i in "${!snapper_configs[@]}"; do
                 { echo "Creating the repo failed"; exit 1; }
         fi
         borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}"
+        borg_prune_repo "$config" ||
+            { echo "Borg - Repository prune error"; exit 1; }
     else
         echo "Unable to mount snapshot"; exit 1
     fi
