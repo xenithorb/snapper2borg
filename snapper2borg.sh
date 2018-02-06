@@ -67,7 +67,7 @@ borg_create_repo() {
 borg_prune_repo() {
     local config="$1"
     # shellcheck disable=2086
-    borg prune ${BORG_FLAGS} -a "*-snapshot*" ${BORG_PRUNE_FLAGS} \
+    borg prune -a "*-snapshot*" ${BORG_PRUNE_FLAGS} \
     "${BORG_BACKUP_PATH}/${config}"
 }
 
