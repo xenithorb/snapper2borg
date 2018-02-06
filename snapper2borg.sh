@@ -72,6 +72,7 @@ borg_prune_repo() {
 }
 
 borg_get_names() {
+    # Outputs a list of archives in borg
     local config="$1"
     borg list -a "*-snapshot*" "${BORG_BACKUP_PATH}/${config}" \
         --format '{name}{NL}'
@@ -139,9 +140,10 @@ for i in "${!snapper_configs[@]}"; do
             { echo "Could not bind mount the snapshot"; exit 1; }
         if [[ ! -d "${BORG_BACKUP_PATH}/$config" ]]; then
             borg_create_repo "$config" ||
-                { echo "Creating the repo failed"; exit 1; }
+                { echo "Borg - Creating the repo failed"; exit 1; }
         fi
-        borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}"
+        borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}" ||
+            { echo "Borg - Archive error, not created properly"; exit 1; }
         borg_prune_repo "$config" ||
             { echo "Borg - Repository prune error"; exit 1; }
     else
