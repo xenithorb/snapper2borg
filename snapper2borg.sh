@@ -2,10 +2,12 @@
 
 BORG_BACKUP_PATH="/mnt/external1/backups"
 BORG_COMPRESSION="auto,zstd"
+BORG_NICENESS="19"
+BORG_IO_NICENESS="7"
 BORG_FLAGS="-x -s"
 #BORG_FLAGS="-x -s -p"
-#BORG_PASSPHRASE="${BORG_PASSPHRASE}"
 BORG_PRUNE_FLAGS="--keep-within 1d -d 10 -w 10 -m 6"
+#BORG_PASSPHRASE="${BORG_PASSPHRASE}"
 BORG_PASSCOMMAND="cat /root/.borg_password"
 BORG_ENCRYPTION="repokey-blake2"
 BIND_MNT_PREFIX="/tmp/borg"
@@ -45,6 +47,13 @@ mount_snapshot() {
     local type="$2"
     local snapshot_num="$3"
     snapper -c "$config" "$type" "$snapshot_num"
+}
+
+borg() {
+    # Overload borg command to introduce niceness
+    nice -n${BORG_NICENESS} \
+    ionice -c2 -n${BORG_IO_NICENESS} \
+    \borg "$@"
 }
 
 borg_create_snap() {
