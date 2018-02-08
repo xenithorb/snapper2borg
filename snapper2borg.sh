@@ -89,14 +89,14 @@ bind_mount_snapshot() {
 }
 
 wrap_up() {
-    for config in "${!snapper_mounted[@]}"; do
-        local num="${snapper_mounted[$config]}"
-        mount_snapshot "$config" umount "$num"
+    for mountpoint in "${bind_mount_paths[@]}"; do
+        umount -l "$mountpoint"
     done
-    # for mountpoint in "${bind_mount_paths[@]}"; do
-    #     umount -l "$mountpoint"
-    # done
-    umount -l "${bind_mount_paths[@]}"
+    for config in "${!snapper_mounted[@]}"; do
+        for num in "${snapper_mounted[$config]}"; do
+            mount_snapshot "$config" umount "$num"
+        done
+    done
     rmdir "$lockdir"
 }
 
@@ -129,26 +129,27 @@ for i in "${!snapper_configs[@]}"; do
     device="${snapper_devices[i]}"
     snapshot_num=$(get_latest "$config")
 
-    if [[ "$SYSTEMD_INSTANCE" =~ (snapper-timeline|^$) ]] &&
-        ( mount_snapshot "$config" mount "$snapshot_num" ); then
-        snapper_mounted[$config]="$snapshot_num"
-        snapshot_mount=$(
-            mount | awk \
-                -v device="$device" \
-                -v num="$snapshot_num" \
-                -v bind_pre="$BIND_MNT_PREFIX" \
-                '$1 ~ device"--snapshot"num && $3 !~ bind_pre { print $3 }'
-        )
-        bind_mount_paths+=($( bind_mount_snapshot "${device##*/}" "$snapshot_mount" )) ||
-            { echo "Could not bind mount the snapshot"; error=1; continue; }
-        if [[ ! -d "${BORG_BACKUP_PATH}/$config" ]]; then
-            borg_create_repo "$config" ||
-                { echo "Borg - Creating the repo failed"; error=1; continue; }
+    if [[ "$SYSTEMD_INSTANCE" =~ (snapper-timeline|^$) ]]; then
+        if ( mount_snapshot "$config" mount "$snapshot_num" ); then
+            snapper_mounted[$config]="$snapshot_num"
+            snapshot_mount_path=$(
+                mount | awk \
+                    -v device="$device" \
+                    -v num="$snapshot_num" \
+                    -v bind_pre="$BIND_MNT_PREFIX" \
+                    '$1 ~ device"--snapshot"num && $3 !~ bind_pre { print $3 }'
+            )
+            bind_mount_paths+=($( bind_mount_snapshot "${device##*/}" "$snapshot_mount_path" )) ||
+                { echo "Could not bind mount the snapshot"; error=1; continue; }
+            if [[ ! -d "${BORG_BACKUP_PATH}/$config" ]]; then
+                borg_create_repo "$config" ||
+                    { echo "Borg - Creating the repo failed"; error=1; continue; }
+            fi
+            borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}" ||
+                { echo "Borg - Archive error, not created properly"; error=1; continue; }
+        else
+            echo "Unable to mount snapshot"; error=1; continue
         fi
-        borg_create_snap "$config" "$snapshot_num" "${bind_mount_paths[-1]}" ||
-            { echo "Borg - Archive error, not created properly"; error=1; continue; }
-    else
-        echo "Unable to mount snapshot"; error=1; continue
     fi
 
     if [[ "$SYSTEMD_INSTANCE" == "snapper-cleanup" ]]; then
