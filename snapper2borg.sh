@@ -63,7 +63,8 @@ borg_create_snap() {
     # shellcheck disable=2086
     borg create ${BORG_FLAGS} \
         ${BORG_COMPRESSION:+-C ${BORG_COMPRESSION}} \
-        "${BORG_BACKUP_PATH}/${config}::${config}-snapshot${num}" "$mount"
+        "${BORG_BACKUP_PATH}/${config}::{hostname}-${config}-snapshot${num}-{now}" \
+        "$mount"
 }
 
 borg_create_repo() {
