@@ -15,7 +15,7 @@ BIND_MNT_PREFIX = "/tmp/borg"
 # Note: "repo" is formerly "config", but I will likely use "config"
 # here in python to implement an actual configuration. (to remove the above)
 
-import sys, os, fcntl
+import sys, os
 from time import sleep
 
 class Instance:
@@ -52,7 +52,7 @@ class Instance:
 
 class Mutex:
     """Creates a new mutex on a file"""
-
+    fcntl = __import__('fcntl')
     def __init__(self, path):
         self.path = open(os.path.abspath(path))
 
@@ -60,7 +60,10 @@ class Mutex:
         """Lock the file"""
         try:
             sys.stderr.write("Locking: " + self.path.name + "\n")
-            fcntl.flock(self.path.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.fcntl.flock(
+                self.path.fileno(),
+                self.fcntl.LOCK_EX | self.fcntl.LOCK_NB
+            )
             return True
         except OSError:
             sys.stderr.write("File is already locked!\n")
@@ -70,74 +73,116 @@ class Mutex:
         """Unlock the file"""
         try:
             sys.stderr.write("Unlocking: " + self.path.name + "\n")
-            fcntl.flock(self.path.fileno(), fcntl.LOCK_UN)
+            self.fcntl.flock(self.path.fileno(), self.fcntl.LOCK_UN)
             return True
         except OSError:
             sys.stderr.write("Unknown error unlocking\n")
             return False
 
-def get_last_snapshot(repo):
-    """
-    Outputs the name of the most recent snapshot.
+class Snapper:
+    """https://github.com/openSUSE/snapper/tree/master/examples/python"""
+    def __init__(self):
+        import dbus
+        self.bus = dbus.SystemBus()
+        self.snapper = dbus.Interface(
+            self.bus.get_object(
+                            'org.opensuse.Snapper',
+                            '/org/opensuse/Snapper'
+                        ),
+            dbus_interface='org.opensuse.Snapper'
+        )
 
-    REMOVEME: Formerly get_latest()
-    """
-    pass
+    def get_last(self, repo):
+        """
+        Outputs the name of the most recent snapshot.
 
-
-def snapper_mount_snapshot(repo, number, action):
-    """
-    Uses snapper's built-in mount command to mount a snapshot.
-
-    `snapper -c <config> <mount/umount> <num>`
-    REMOVEME: Formerly mount_snapshot(), Param "action" formerly "type"
-    """
-    pass
-
-
-def borg():
-    """Overload borg to include niceness... do we need this in py?"""
-
-
-def borg_repo_create(repo):
-    """
-    Creates a borg repository.
-
-    Presumably this would be used after checking for an already existing repo,
-    then using this to create a blank one.
-
-    REMOVEME: Formerly borg_create_repo()
-    """
-    pass
+        REMOVEME: Formerly get_latest()
+        """
+        pass
 
 
-def borg_repo_prune(repo):
-    """
-    Runs `borg prune` with options.
+    def mount(self, repo, number, action):
+        """
+        Uses snapper's built-in mount command to mount a snapshot.
 
-    Should be called when SYSTEMD_INSTANCE == "snapper-cleanup"
+        `snapper -c <config> <mount/umount> <num>`
+        REMOVEME: Formerly mount_snapshot(), Param "action" formerly "type"
+        """
+        pass
 
-    REMOVEME: Formerly borg_prune_repo()
-    """
-    pass
+    def get_configs(self):
+        """Print a list of snapper configs"""
+        return self.snapper.ListConfigs()
+
+    def list_snapshots(self, repo):
+        from time import gmtime, asctime
+        from pwd import getpwuid
+        snapshots = self.snapper.ListSnapshots(repo)
+        for snapshot in snapshots:
+            print(snapshot[0], snapshot[1], snapshot[2])
+
+            if snapshot[3] != -1:
+                print(asctime(gmtime(snapshot[3])))
+            else:
+                print("now")
+
+            print(getpwuid(snapshot[4])[0], snapshot[5], snapshot[6])
+            for k, v in snapshot[7].items():
+                print("%s=%s" % (k, v))
 
 
-def borg_archive_create(repo, number, source):
-    """
-    Create a borg archive from a filesystem source.
+class Borg:
+    """`borg` handler"""
+    shutil = __import__('shutil')
+    sub = __import__('subprocess')
+    json = __import__('json')
+    borg_path = shutil.which('borg')
 
-    REMOVEME: Formerly borg_create_snap()
-    """
-    pass
+    def __init__(self, repo):
+        self.repo = repo
+
+    def init(self):
+        """
+        Creates a borg repository.
+
+        Presumably this would be used after checking for an already existing repo,
+        then using this to create a blank one.
+
+        REMOVEME: Formerly borg_create_repo()
+        """
+        pass
 
 
-def borg_archive_get_list(repo):
-    """
-    Gets a full list of the archives in a repo.
+    def prune(self):
+        """
+        Runs `borg prune` with options.
 
-    REMOVEME: Formerly borg_get_names(), Param "source" formerly mount.
-    """
-    pass
+        Should be called when SYSTEMD_INSTANCE == "snapper-cleanup"
+
+        REMOVEME: Formerly borg_prune_repo()
+        """
+        pass
+
+
+    def create(repo, number, source):
+        """
+        Create a borg archive from a filesystem source.
+
+        REMOVEME: Formerly borg_create_snap()
+        """
+        pass
+
+
+    def list(self):
+        """
+        Gets a full list of the archives in a repo.
+
+        REMOVEME: Formerly borg_get_names(), Param "source" formerly mount.
+        """
+        args = [self.borg_path, "list", "--json", self.repo]
+        list_json = self.json.loads(self.sub.run(args, stdout=self.sub.PIPE).stdout)
+        print(self.json.dumps(list_json, indent=4))
+
 
 
 def bind_mount_snapshot(repo, snapper_mount_path):
@@ -146,7 +191,11 @@ def bind_mount_snapshot(repo, snapper_mount_path):
 
 
 def main(self):
-    sleep(300)
+    snap = Snapper()
+    snap.list_snapshots('root')
+    borg = Borg('/mnt/external1/backups/root')
+    borg.list()
+    pass
 
 if __name__ == "__main__":
         app = Instance(sys.argv)
