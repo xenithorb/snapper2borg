@@ -15,16 +15,38 @@ BIND_MNT_PREFIX = "/tmp/borg"
 # Note: "repo" is formerly "config", but I will likely use "config"
 # here in python to implement an actual configuration. (to remove the above)
 
+import os, fcntl, sys
+
+class Mutex:
+    """Creates a new mutex on a file"""
+
+    def __init__(self, path):
+        self.path = open(os.path.abspath(path))
+
+    def lock(self):
+        """Lock the file"""
+        try:
+            sys.stderr.write("Locking: " + self.path.name +"\n")
+            fcntl.flock(self.path.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            sys.stderr.write("File is already locked!\n")
+            return 1
+
+    def unlock(self):
+        """Unlock the file"""
+        try:
+            sys.stderr.write("Unlocking: " + self.path.name + "\n")
+            fcntl.flock(self.path.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            sys.stderr.write("Unknown error unlocking\n")
+
+def sleep(seconds):
+    from time import sleep
+    sleep(seconds)
 
 def check_root():
     """Return successful if we are the root user."""
     pass
-
-
-def mutex():
-    """Checks to make sure the script isn't running already."""
-    pass
-
 
 def get_last_snapshot(repo):
     """
@@ -94,7 +116,25 @@ def bind_mount_snapshot(repo, snapper_mount_path):
     """Bind mounts a snapshot to a common path under BIND_MNT_PREFIX."""
     pass
 
+class MyApp:
 
-def wrap_up():
-    """Do we need this? For exit handling"""
-    pass
+    def run(self, argv):
+        self.mutex = Mutex(argv[0])
+
+        if self.mutex.lock():
+            sys.stderr.write(os.path.basename(argv[0])
+                                + " is already running!\n")
+            sys.exit(1)
+
+        sleep(300)
+
+    def wrap_up(self):
+        self.mutex.unlock()
+
+
+if __name__ == "__main__":
+    try:
+        app = MyApp()
+        app.run(sys.argv)
+    finally:
+        app.wrap_up()
