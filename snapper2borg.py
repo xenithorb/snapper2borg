@@ -15,7 +15,40 @@ BIND_MNT_PREFIX = "/tmp/borg"
 # Note: "repo" is formerly "config", but I will likely use "config"
 # here in python to implement an actual configuration. (to remove the above)
 
-import os, fcntl, sys
+import sys, os, fcntl
+from time import sleep
+
+class Instance:
+    """Use mutexes to ensure running only one instance of Instance"""
+
+    def __init__(self, args):
+        self.args = args
+        self.path = self.args[0]
+        self.mutex = Mutex(self.path)
+
+    def check_root(self):
+        if os.geteuid() == 0:
+            return True
+
+    def wrap_up(self):
+        """Do stuff before the program exits"""
+        self.mutex.unlock()
+
+    def run(self):
+        """Run the main function or exit because we couldn't get a lock"""
+        try:
+            if not self.check_root():
+                sys.stderr.write("You need to be root to use this script.\n")
+                sys.exit(1)
+            if self.mutex.lock():
+                main(self)
+            else:
+                sys.stderr.write(
+                    os.path.basename(self.path) + " is already running!\n"
+                )
+                sys.exit(1)
+        finally:
+            self.wrap_up()
 
 class Mutex:
     """Creates a new mutex on a file"""
@@ -26,27 +59,22 @@ class Mutex:
     def lock(self):
         """Lock the file"""
         try:
-            sys.stderr.write("Locking: " + self.path.name +"\n")
+            sys.stderr.write("Locking: " + self.path.name + "\n")
             fcntl.flock(self.path.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
         except OSError:
             sys.stderr.write("File is already locked!\n")
-            return 1
+            return False
 
     def unlock(self):
         """Unlock the file"""
         try:
             sys.stderr.write("Unlocking: " + self.path.name + "\n")
             fcntl.flock(self.path.fileno(), fcntl.LOCK_UN)
+            return True
         except OSError:
             sys.stderr.write("Unknown error unlocking\n")
-
-def sleep(seconds):
-    from time import sleep
-    sleep(seconds)
-
-def check_root():
-    """Return successful if we are the root user."""
-    pass
+            return False
 
 def get_last_snapshot(repo):
     """
@@ -116,25 +144,10 @@ def bind_mount_snapshot(repo, snapper_mount_path):
     """Bind mounts a snapshot to a common path under BIND_MNT_PREFIX."""
     pass
 
-class MyApp:
 
-    def run(self, argv):
-        self.mutex = Mutex(argv[0])
-
-        if self.mutex.lock():
-            sys.stderr.write(os.path.basename(argv[0])
-                                + " is already running!\n")
-            sys.exit(1)
-
-        sleep(300)
-
-    def wrap_up(self):
-        self.mutex.unlock()
-
+def main(self):
+    sleep(300)
 
 if __name__ == "__main__":
-    try:
-        app = MyApp()
-        app.run(sys.argv)
-    finally:
-        app.wrap_up()
+        app = Instance(sys.argv)
+        app.run()
